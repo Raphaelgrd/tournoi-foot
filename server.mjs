@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 dotenv.config();
 
@@ -24,21 +25,28 @@ app.use(express.static(__dirname));
 
 // --- CONNEXION SUPABASE ---
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // correspond à ta variable Render
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Log pour vérifier les variables en prod
+// Log pour Render (debug)
 console.log("✅ SUPABASE_URL:", supabaseUrl);
 console.log("✅ SUPABASE_KEY:", supabaseKey ? "clé détectée" : "❌ manquante");
 
+// Vérifie si les fichiers HTML existent
+console.log("📂 Fichiers dans le dossier courant :", fs.readdirSync(__dirname));
+
 // --- ROUTE D'ACCUEIL ---
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  const indexPath = path.join(__dirname, "index.html");
+  console.log("➡️ Tentative d’accès à :", indexPath);
+  res.sendFile(indexPath);
 });
 
 // --- ROUTE PAGE ADMIN ---
 app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "admin.html"));
+  const adminPath = path.join(__dirname, "admin.html");
+  console.log("➡️ Tentative d’accès à :", adminPath);
+  res.sendFile(adminPath);
 });
 
 // --- ROUTE LOGIN ADMIN ---
@@ -46,7 +54,7 @@ const tokens = new Map(); // stockage temporaire des sessions
 
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
-  console.log("🔐 Tentative de connexion :", username, password);
+  console.log("🔐 Tentative de connexion :", username);
 
   const { data, error } = await supabase
     .from("admin")
@@ -74,16 +82,29 @@ app.post("/login", async (req, res) => {
 app.get("/inscriptions", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !tokens.has(authHeader)) {
+    console.log("⛔ Accès refusé - token manquant ou invalide");
     return res.status(403).json({ error: "Accès refusé" });
   }
 
   const { data, error } = await supabase.from("inscription").select("*");
   if (error) {
-    console.error("Erreur Supabase :", error);
+    console.error("❌ Erreur Supabase :", error);
     return res.status(500).json({ error: "Erreur Supabase" });
   }
 
   res.json(data);
+});
+
+// --- ROUTE TEST (pour Render) ---
+app.get("/test", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("admin").select("*").limit(1);
+    if (error) throw error;
+    res.json({ message: "Connexion Supabase OK ✅", data });
+  } catch (err) {
+    console.error("Erreur test Supabase :", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- LANCEMENT DU SERVEUR ---
