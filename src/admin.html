@@ -87,7 +87,7 @@
     });
 
     async function loadInscriptions() {
-      const res = await fetch("http://localhost:5000/inscriptions", {
+      const res = await fetch("https://tournoi-foot-yr72.onrender.com/inscriptions", {
         headers: { Authorization: token },
       });
       const data = await res.json();
