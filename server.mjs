@@ -1,91 +1,106 @@
+// --- Import des modules ---
 import express from "express";
-import cors from "cors";
 import bodyParser from "body-parser";
+import cors from "cors";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 
+// --- Configuration ---
 dotenv.config();
-
 const app = express();
 const port = process.env.PORT || 5000;
 
+// --- Pour servir les fichiers HTML ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- Middlewares ---
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static(__dirname)); // sert index.html, admin.html etc.
 
-// Connexion à Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+// --- Connexion à Supabase ---
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// --- Route d'inscription joueurs ---
-app.post("/register", async (req, res) => {
-  const { nom, prenom, age, email } = req.body;
-
-  if (!nom || !prenom || !age || !email) {
-    return res.status(400).json({ error: "Champs manquants" });
-  }
-
-  const { error } = await supabase.from("inscription").insert([{ nom, prenom, age, email }]);
-  if (error) {
-    console.error("Erreur Supabase :", error);
-    return res.status(500).json({ error: "Erreur lors de l'inscription" });
-  }
-
-  res.status(200).json({ message: "Inscription réussie ✅" });
+// --- Route principale : renvoie le formulaire ---
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// --- Authentification admin simple ---
-let adminToken = null;
+// --- Route admin : renvoie la page admin ---
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "admin.html"));
+});
+
+// --- ROUTE INSCRIPTION TOURNOI ---
+app.post("/inscription", async (req, res) => {
+  try {
+    const { nom, prenom, age, email } = req.body;
+
+    const { data, error } = await supabase
+      .from("inscriptions")
+      .insert([{ nom, prenom, age, email }]);
+
+    if (error) throw error;
+
+    res.status(200).json({ message: "Inscription réussie !" });
+  } catch (error) {
+    console.error("Erreur lors de l'inscription :", error);
+    res.status(500).json({ message: "Erreur lors de l'inscription" });
+  }
+});
+
+// --- GESTION DU LOGIN ADMIN ---
+const tokens = new Map(); // stockage temporaire des sessions
 
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
-  console.log("📩 Données reçues :", username, password);
+  console.log("Tentative de connexion :", username, password);
 
-  // Vérifie dans la table admin
-  const { data, error } = await supabase
-    .from("admin")
-    .select("*")
-    .eq("username", username)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from("admin")
+      .select("*")
+      .eq("username", username)
+      .single();
 
-  console.log("🗂️ Résultat Supabase :", data, error);
+    console.log("Données Supabase :", data);
 
-  if (error || !data) {
-    return res.status(401).json({ error: "Identifiant incorrect" });
+    if (error || !data) {
+      return res.status(401).json({ error: "Utilisateur introuvable" });
+    }
+
+    if (password !== data.password) {
+      return res.status(401).json({ error: "Mot de passe incorrect" });
+    }
+
+    const token = crypto.randomBytes(16).toString("hex");
+    tokens.set(token, username);
+
+    res.json({ token });
+  } catch (err) {
+    console.error("Erreur lors du login :", err);
+    res.status(500).json({ error: "Erreur interne du serveur" });
   }
-
-  // Vérifie mot de passe
-  if (password.trim() !== data.password.trim()) {
-    return res.status(401).json({ error: "Mot de passe incorrect" });
-  }
-
-  // Génère un token basique (pas besoin de crypto pour ce test)
-  adminToken = Math.random().toString(36).substring(2);
-  console.log("✅ Connexion réussie, token :", adminToken);
-  res.json({ token: adminToken });
 });
 
-// --- Route protégée pour afficher les inscriptions ---
+// --- ROUTE PROTÉGÉE : affichage des inscriptions ---
 app.get("/inscriptions", async (req, res) => {
-  const token = req.headers.authorization;
-  if (token !== adminToken) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !tokens.has(authHeader)) {
     return res.status(403).json({ error: "Accès refusé" });
   }
 
-  const { data, error } = await supabase.from("inscription").select("*");
-  if (error) {
-    console.error("Erreur Supabase :", error);
-    return res.status(500).json({ error: "Erreur lors du chargement des données" });
-  }
+  const { data, error } = await supabase.from("inscriptions").select("*");
+  if (error) return res.status(500).json({ error: "Erreur Supabase" });
 
   res.json(data);
-});
-
-// --- Middleware de debug ---
-app.use((req, res, next) => {
-  console.log("➡️ Nouvelle requête :", req.method, req.url);
-  next();
 });
 
 // --- Lancement du serveur ---
