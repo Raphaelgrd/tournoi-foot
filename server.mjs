@@ -19,7 +19,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // --- CONFIG ---
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "src"))); // pour servir les fichiers statiques du dossier src
 
@@ -92,7 +98,7 @@ app.get("/inscriptions", async (req, res) => {
   res.json(data);
 });
 
-// --- ROUTE TEST (vérifie la connexion Render <-> Supabase) ---
+// --- ROUTE TEST ---
 app.get("/test", async (req, res) => {
   try {
     const { data, error } = await supabase.from("admin").select("*").limit(1);
