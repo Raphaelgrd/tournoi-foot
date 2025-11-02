@@ -14,43 +14,40 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 10000;
 
-// Gestion du chemin absolu
+// Gestion du chemin absolu (nécessaire sur Render)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // --- CONFIG ---
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, "src"))); // pour servir les fichiers statiques du dossier src
 
 // --- CONNEXION SUPABASE ---
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // clé de service de Render
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Log pour Render (debug)
+// --- LOG POUR DEBUG ---
 console.log("✅ SUPABASE_URL:", supabaseUrl);
 console.log("✅ SUPABASE_KEY:", supabaseKey ? "clé détectée" : "❌ manquante");
 
-// Vérifie si les fichiers HTML existent
-console.log("📂 Fichiers dans le dossier courant :", fs.readdirSync(__dirname));
-
-// --- ROUTE D'ACCUEIL ---
+// --- ROUTE PRINCIPALE (page d'accueil) ---
 app.get("/", (req, res) => {
-  const indexPath = path.join(__dirname, "index.html");
-  console.log("➡️ Tentative d’accès à :", indexPath);
+  const indexPath = path.join(__dirname, "src", "index.html");
+  console.log("➡️ Envoi du fichier :", indexPath);
   res.sendFile(indexPath);
 });
 
 // --- ROUTE PAGE ADMIN ---
 app.get("/admin", (req, res) => {
-  const adminPath = path.join(__dirname, "admin.html");
-  console.log("➡️ Tentative d’accès à :", adminPath);
+  const adminPath = path.join(__dirname, "src", "admin.html");
+  console.log("➡️ Envoi du fichier :", adminPath);
   res.sendFile(adminPath);
 });
 
 // --- ROUTE LOGIN ADMIN ---
-const tokens = new Map(); // stockage temporaire des sessions
+const tokens = new Map(); // stockage temporaire des sessions admin
 
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
@@ -95,7 +92,7 @@ app.get("/inscriptions", async (req, res) => {
   res.json(data);
 });
 
-// --- ROUTE TEST (pour Render) ---
+// --- ROUTE TEST (vérifie la connexion Render <-> Supabase) ---
 app.get("/test", async (req, res) => {
   try {
     const { data, error } = await supabase.from("admin").select("*").limit(1);
