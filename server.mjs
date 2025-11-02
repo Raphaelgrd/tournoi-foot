@@ -1,45 +1,52 @@
+// --- IMPORTS ---
 import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import bcrypt from "bcrypt";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 
 dotenv.config();
 
-// --- CONFIG PATH ---
+const app = express();
+const port = process.env.PORT || 10000;
+
+// Gestion du chemin absolu
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- INITIALISATION EXPRESS ---
-const app = express();
+// --- CONFIG ---
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(__dirname)); // permet de servir index.html et admin.html
+app.use(express.static(__dirname));
 
-// --- SUPABASE ---
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+// --- CONNEXION SUPABASE ---
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // correspond à ta variable Render
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// --- TOKEN TEMPORAIRE ---
-const tokens = new Map();
+// Log pour vérifier les variables en prod
+console.log("✅ SUPABASE_URL:", supabaseUrl);
+console.log("✅ SUPABASE_KEY:", supabaseKey ? "clé détectée" : "❌ manquante");
 
-// --- ROUTE SERVEUR DE BASE ---
+// --- ROUTE D'ACCUEIL ---
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
+// --- ROUTE PAGE ADMIN ---
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "admin.html"));
 });
 
 // --- ROUTE LOGIN ADMIN ---
+const tokens = new Map(); // stockage temporaire des sessions
+
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
-
-  console.log("🟦 Tentative de connexion :", username, password);
+  console.log("🔐 Tentative de connexion :", username, password);
 
   const { data, error } = await supabase
     .from("admin")
@@ -47,36 +54,32 @@ app.post("/login", async (req, res) => {
     .eq("username", username)
     .single();
 
-  console.log("🟩 Données Supabase :", data);
-
   if (error || !data) {
-    console.log("❌ Utilisateur introuvable");
+    console.log("❌ Utilisateur introuvable :", error);
     return res.status(401).json({ error: "Utilisateur introuvable" });
   }
 
   if (password !== data.password) {
-    console.log("❌ Mot de passe incorrect");
+    console.log("⚠️ Mot de passe incorrect");
     return res.status(401).json({ error: "Mot de passe incorrect" });
   }
 
   const token = crypto.randomBytes(16).toString("hex");
   tokens.set(token, username);
-
-  console.log("✅ Connexion réussie, token généré :", token);
+  console.log("✅ Connexion réussie :", username);
   res.json({ token });
 });
 
-// --- ROUTE PROTÉGÉE INSCRIPTIONS ---
+// --- ROUTE PROTÉGÉE : INSCRIPTIONS ---
 app.get("/inscriptions", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !tokens.has(authHeader)) {
-    console.log("❌ Accès refusé - Token manquant ou invalide");
     return res.status(403).json({ error: "Accès refusé" });
   }
 
   const { data, error } = await supabase.from("inscription").select("*");
   if (error) {
-    console.log("⚠️ Erreur Supabase :", error);
+    console.error("Erreur Supabase :", error);
     return res.status(500).json({ error: "Erreur Supabase" });
   }
 
@@ -84,7 +87,6 @@ app.get("/inscriptions", async (req, res) => {
 });
 
 // --- LANCEMENT DU SERVEUR ---
-const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`🚀 Serveur lancé sur http://localhost:${port}`);
 });
